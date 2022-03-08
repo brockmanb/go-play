@@ -2,23 +2,43 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
+
+	"github.com/gorilla/mux"
 )
 
-func initFileServer() {
-	// Wire up static asset handler
-	const staticPathPrefix string = "/static/"
-	fs := http.FileServer(http.Dir("src/static/"))
-	http.Handle(staticPathPrefix, http.StripPrefix(staticPathPrefix, fs))
+func LogUrlMiddleware(next http.Handler) http.Handler {
+	fn := func(w http.ResponseWriter, req *http.Request) {
+		log.Println(req.URL.Path)
+		next.ServeHTTP(w, req)
+	}
+
+	return http.HandlerFunc(fn)
 }
 
 func main() {
-	// Generic catch-all request handler
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Requested URL: %s\n", r.URL.Path)
+	router := mux.NewRouter()
+
+	bookRouter := router.PathPrefix("/books").Subrouter()
+	bookRouter.HandleFunc("/{title}/page/{page}", func(w http.ResponseWriter, req *http.Request) {
+		vars := mux.Vars(req)
+		title := vars["title"]
+		page := vars["page"]
+		fmt.Fprintf(w, "You've requested the book: %s on page %s\n", title, page)
 	})
 
-	initFileServer()
+	// Static assets folder
+	const staticDir = "/static/"
+	router.
+		PathPrefix(staticDir).
+		Handler(http.StripPrefix(staticDir, http.FileServer(http.Dir("src"+staticDir))))
 
-	http.ListenAndServe(":80", nil)
+	// Generic root request handler
+	router.Use(LogUrlMiddleware)
+	router.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+		fmt.Fprintf(w, "Hello World")
+	})
+
+	http.ListenAndServe(":80", router)
 }
